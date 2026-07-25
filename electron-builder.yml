@@ -1,0 +1,41 @@
+appId: com.ashdrive.app
+productName: AshDrive
+copyright: Copyright © 2026 AshDrive
+directories:
+  output: dist
+  buildResources: build
+files:
+  - src/**/*
+  - package.json
+  - electron-builder.yml
+asar: true
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AshDrive
+  artifactName: ${productName}-Setup-${version}.${ext}
+mac:
+  icon: build/icon.png
+  category: public.app-category.utilities
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch: [universal]
+  artifactName: ${productName}-${version}-universal.${ext}
+dmg:
+  title: ${productName} ${version}
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications

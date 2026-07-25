@@ -1,0 +1,25 @@
+{
+  "name": "ashdrive",
+  "version": "1.0.0",
+  "description": "Automatically back up your flash drives on Mac and Windows",
+  "author": "AshDrive",
+  "license": "MIT",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "icon": "node scripts/make-icon.mjs",
+    "test": "node scripts/test.cjs",
+    "smoke": "electron . --smoke",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:all": "electron-builder -mwl"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "sharp": "^0.35.3"
+  },
+  "dependencies": {
+    "plist": "^5.0.0"
+  }
+}
