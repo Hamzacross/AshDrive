@@ -1,98 +1,116 @@
+<div align="center">
+
+<img src="build/icon.png" width="110" height="110" alt="AshDrive" />
+
 # AshDrive
 
-AshDrive watches for your flash / USB drives and backs them up automatically — on **Windows** and **macOS**.
+**Plug in a flash drive → it backs itself up.**
 
-When you plug in a drive you've set up, AshDrive either asks *"Back up to &lt;folder&gt;?"* or backs it up automatically and sends a notification. Backups are incremental — only new or changed files are copied, so repeat backups are fast.
+AshDrive watches for your USB / flash drives and backs them up automatically — on **Windows** and **macOS**.
 
----
+[![CI](https://github.com/Hamacross/AshDrive/actions/workflows/build.yml/badge.svg)](https://github.com/Hamacross/AshDrive/actions/workflows/build.yml)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blueviolet)](#)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## What it does
-
-- **Watches for removable drives** in the background (lives in your system tray / menu bar).
-- **On insertion** of a configured drive:
-  - *Ask mode* — shows a notification + an in-app prompt: "Back up &lt;name&gt; to &lt;folder&gt;?"
-  - *Auto mode* — backs up immediately and sends a "Backup complete" notification.
-- **Incremental backup** — copies new/changed files; skips identical files (size + modified time). Files are never deleted from the backup, so it's a safe superset.
-- **System junk is skipped** — `System Volume Information`, `$RECYCLE.BIN`, `.Trashes`, `.Spotlight-V100`, `.fseventsd`, etc.
-- **Start with login** (optional) so it's always watching.
-- **System tray menu** with "Back up now" for any plugged-in drive.
-
-> Note: backups happen **on insertion** (you can also click *Back up now* anytime). A backup can't run on removal, because the drive must be present to read it — AshDrive instead notifies you that the drive was safely removed and reminds you of the last backup time.
+</div>
 
 ---
 
-## Install (ready-made build)
+AshDrive lives in your system tray (or macOS menu bar) and watches for drives you've set up. When you plug one in, it either asks *"Back up to &lt;folder&gt;?"* or backs it up immediately and sends a notification. Backups are **incremental** — only new or changed files are copied — so repeat backups are fast, and your backup folder is always a safe, complete copy of the drive.
 
-1. **Windows**: run `AshDrive-Setup-1.0.0.exe` and follow the installer.
-   - Because the app is unsigned, Windows SmartScreen may warn the first time. Click **More info → Run anyway**.
-2. **macOS**: open `AshDrive-1.0.0-universal.dmg`, drag **AshDrive** to **Applications**.
-   - Because the app is unsigned, the first launch needs: right-click the app → **Open** → **Open** (or `xattr -dr com.apple.quarantine /Applications/AshDrive.app`).
+## ✨ Features
 
----
+- **Automatic, hands-off backups** — plug in a configured drive and AshDrive does the rest.
+- **Two modes per drive:**
+  - _Ask_ — prompts you (notification + in-app banner) before backing up.
+  - _Auto_ — backs up on insertion and just notifies you when it's done.
+- **Incremental copies** — skips files that match on size + modified time; nothing is ever deleted from the backup.
+- **Cross-platform** — one app, one codebase, native notifications + tray on Windows and macOS.
+- **System-tray menu** with _Back up now_ for any plugged-in drive.
+- **Runs at login** (optional) so it's always watching.
+- **No native modules** — drive detection uses built-in OS tools (PowerShell on Windows, `diskutil` on macOS), so it builds cleanly and there's nothing to compile.
 
-## Run from source
+## 📦 Install
 
-Requirements: **Node.js 18+** (tested on Node 20/22).
+### Windows
+Run **`AshDrive-Setup-1.0.0.exe`** and follow the installer.
+
+> The app is unsigned, so Windows SmartScreen may warn on first launch — click **More info → Run anyway**. A portable copy (`AshDrive.exe`) is also in `dist/win-unpacked/`.
+
+### macOS
+Open **`AshDrive-1.0.0-universal.dmg`**, drag **AshDrive** to **Applications**.
+
+> Unsigned on macOS too: right-click the app → **Open** → **Open** the first time, or run
+> `xattr -dr com.apple.quarantine /Applications/AshDrive.app`
+
+## 🚀 Usage
+
+1. Launch AshDrive — it appears in your tray / menu bar.
+2. Click **Add drive**:
+   - Pick the detected flash drive.
+   - Choose a **backup folder**.
+   - Give it a name.
+   - Toggle **Back up automatically** on or off.
+3. That's it. Unplug and re-plug the drive — AshDrive backs it up (or asks first, depending on the mode).
+
+A drive is recognised by its **volume label + size**, so it stays "your drive" even if Windows assigns it a different letter next time.
+
+## 🛠️ Run from source
+
+Requirements: **Node.js 18+** (tested on Node 20 / 22).
 
 ```bash
 npm install
 npm run icon      # generate app + tray icons (one-time)
 npm start         # launch the app
-npm test          # run logic tests (drive detection + backup)
+npm test          # logic tests (drive detection + backup engine)
 ```
 
----
+## 🔨 Build the installers
 
-## Build the installers
-
-### Windows `.exe` (build on Windows or via CI)
+### Windows `.exe` (build on Windows)
 ```bash
 npm run dist:win
 ```
-Output: `dist/AshDrive-Setup-1.0.0.exe` (NSIS installer).
+→ `dist/AshDrive-Setup-1.0.0.exe` (NSIS installer)
 
 ### macOS `.dmg` (must build **on macOS**)
 ```bash
 npm run dist:mac
 ```
-Output: `dist/AshDrive-1.0.0-universal.dmg` (universal — Apple Silicon + Intel).
+→ `dist/AshDrive-1.0.0-universal.dmg` (Apple Silicon + Intel)
 
-> **Important:** a macOS `.dmg` **cannot be created on a Windows machine.** Apple's disk-image tooling (`hdiutil`) only runs on macOS, and `electron-builder` enforces this. You have two ways to get the `.dmg`:
+> ⚠️ **A `.dmg` cannot be created on a Windows machine** — Apple's `hdiutil` only runs on macOS, and `electron-builder` enforces this. Two ways to get it:
+> - **Cloud (no Mac):** push to GitHub and run the **Build AshDrive** workflow (`.github/workflows/build.yml`) — it builds the `.dmg` on a macOS runner and the `.exe` on a Windows runner, then uploads both as artifacts. Public repos get free macOS runners.
+> - **Any Mac:** `npm install && npm run icon && npm run dist:mac`.
 >
-> 1. **Run the build on any Mac** — copy this folder to a Mac, `npm install`, `npm run icon`, `npm run dist:mac`. One command, one file out.
-> 2. **Build it in the cloud with GitHub Actions** (no Mac required) — push this project to a GitHub repo and either tag a release (`v1.0.0`) or trigger the workflow manually from the **Actions** tab → **Build AshDrive** → **Run workflow**. The workflow (`.github/workflows/build.yml`) builds both the `.exe` (Windows runner) and `.dmg` (macOS runner) and uploads them as downloadable artifacts.
->
-> For distribution beyond personal use, sign and notarize the Mac app with an Apple Developer ID, and sign the Windows installer with a code-signing certificate, to remove the warning prompts.
+> For real distribution, sign + notarize the Mac app (Apple Developer ID) and sign the Windows installer (code-signing certificate) to remove the warning prompts.
 
----
+## 🧱 How it works
 
-## How it works (architecture)
+| Path | Role |
+| --- | --- |
+| `src/main.js` | Electron main process: window, tray, drive polling, backup orchestration, notifications, IPC |
+| `src/preload.js` | Secure context bridge between renderer and main |
+| `src/renderer/` | The UI — drive cards, add-drive dialog, settings, prompts, progress |
+| `src/lib/drives.js` | Cross-platform removable-drive detection (pure JS, no native modules) |
+| `src/lib/backup.js` | Incremental folder copy with system-junk skipping |
+| `scripts/make-icon.mjs` | Renders the app + tray icons from SVG via `sharp` |
+| `electron-builder.yml` | Packaging config (NSIS for Windows, DMG for macOS) |
 
-- `src/main.js` — Electron main process: window, tray, drive polling, backup orchestration, notifications, IPC.
-- `src/preload.js` — secure context bridge between renderer and main.
-- `src/renderer/` — the UI (HTML/CSS/JS): drive cards, add-drive dialog, settings, backup prompts and progress.
-- `src/lib/drives.js` — cross-platform removable-drive detection (PowerShell on Windows, `diskutil` on macOS). Pure JS, **no native modules** to compile.
-- `src/lib/backup.js` — incremental folder copy with system-junk skipping.
-- `scripts/make-icon.mjs` — renders the app icon + tray icons from SVG.
-- `electron-builder.yml` — packaging config for Windows (NSIS) and macOS (DMG).
+Drive detection polls every 3 seconds using OS built-ins. System-managed folders (`System Volume Information`, `$RECYCLE.BIN`, `.Trashes`, `.Spotlight-V100`, `.fseventsd`, …) are skipped automatically.
 
-Drive detection polls every 3 seconds using built-in OS tools, so there are no native addons and the Windows `.exe` builds cleanly on this machine. A drive is identified by **volume label + size**, so it's recognised as "the same flash drive" even if its drive letter changes.
+## ❓ FAQ
 
----
+**Why does the backup happen on insertion, not on removal?**
+A drive has to be present to read it. On removal, AshDrive instead notifies you that the drive was safely ejected and reminds you of the last backup time. You can also hit **Back up now** anytime while it's plugged in.
 
-## Project layout
+**Will it back up every flash drive I plug in?**
+Only the drives you've added. Unknown drives get a one-line "detected — open AshDrive to set up" notification.
 
-```
-AshDrive/
-├─ src/
-│  ├─ main.js
-│  ├─ preload.js
-│  ├─ renderer/   (index.html, styles.css, app.js)
-│  ├─ lib/        (drives.js, backup.js)
-│  └─ assets/     (logo.svg)
-├─ scripts/       (make-icon.mjs, test.cjs)
-├─ build/         (generated icons)
-├─ .github/workflows/build.yml
-├─ electron-builder.yml
-└─ package.json
-```
+**Is my data sent anywhere?**
+No. AshDrive copies files locally from the drive to a folder you choose. Nothing leaves your machine.
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
