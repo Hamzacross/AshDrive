@@ -1,6 +1,6 @@
 'use strict';
 
-const ash = window.ash;
+const api = window.ash;
 
 let config = { drives: [], startAtLogin: true };
 let state = {};
@@ -125,12 +125,12 @@ function renderCard(dc) {
   `;
 
   el.querySelector('[data-folder]').addEventListener('click', (e) => {
-    ash.openFolder(e.currentTarget.getAttribute('data-folder'));
+    api.openFolder(e.currentTarget.getAttribute('data-folder'));
   });
-  el.querySelector('[data-backup]').addEventListener('click', () => ash.backupNow(dc.id));
+  el.querySelector('[data-backup]').addEventListener('click', () => api.backupNow(dc.id));
   el.querySelector('[data-toggle-auto]').addEventListener('click', (e) => {
     const on = e.currentTarget.getAttribute('data-on') === '1';
-    ash.updateDrive(dc.id, { autoBackup: !on }).then((r) => {
+    api.updateDrive(dc.id, { autoBackup: !on }).then((r) => {
       config = r.config;
       render();
     });
@@ -138,7 +138,7 @@ function renderCard(dc) {
   el.querySelector('[data-remove]').addEventListener('click', (e) => {
     const btn = e.currentTarget;
     if (btn.dataset.confirm) {
-      ash.removeDrive(dc.id).then((r) => {
+      api.removeDrive(dc.id).then((r) => {
         config = r.config;
         render();
       });
@@ -172,12 +172,12 @@ function renderBanners() {
     `;
     b.querySelector('[data-yes]').addEventListener('click', () => {
       pending.delete(id);
-      ash.respondBackup(id, true);
+      api.respondBackup(id, true);
       renderBanners();
     });
     b.querySelector('[data-no]').addEventListener('click', () => {
       pending.delete(id);
-      ash.respondBackup(id, false);
+      api.respondBackup(id, false);
       renderBanners();
     });
     bannersEl.appendChild(b);
@@ -195,7 +195,7 @@ const driveMeta = document.getElementById('driveMeta');
 let selectedDrive = null;
 
 async function refreshDriveSelect() {
-  drives = await ash.listDrives();
+  drives = await api.listDrives();
   driveSelect.innerHTML = '';
   if (drives.length === 0) {
     driveSelect.innerHTML = '<option value="">No drive detected</option>';
@@ -243,7 +243,7 @@ driveSelect.addEventListener('change', onDriveSelectChange);
 driveName.addEventListener('input', validateAddForm);
 
 document.getElementById('browseFolder').addEventListener('click', async () => {
-  const p = await ash.chooseFolder();
+  const p = await api.chooseFolder();
   if (p) {
     backupFolder.value = p;
     validateAddForm();
@@ -258,7 +258,7 @@ autoToggle.addEventListener('click', () => {
 saveDrive.addEventListener('click', async () => {
   if (saveDrive.disabled) return;
   saveDrive.disabled = true;
-  const r = await ash.addDrive({
+  const r = await api.addDrive({
     drive: selectedDrive,
     name: driveName.value,
     backupFolder: backupFolder.value,
@@ -281,7 +281,7 @@ const versionLabel = document.getElementById('versionLabel');
 
 document.getElementById('settingsBtn').addEventListener('click', async () => {
   loginToggle.setAttribute('aria-checked', config.startAtLogin ? 'true' : 'false');
-  const info = await ash.getAppInfo();
+  const info = await api.getAppInfo();
   versionLabel.textContent = `AshDrive v${info.version} · ${info.platform}`;
   settingsModal.hidden = false;
 });
@@ -290,7 +290,7 @@ loginToggle.addEventListener('click', () => {
   const on = loginToggle.getAttribute('aria-checked') === 'true';
   const next = !on;
   loginToggle.setAttribute('aria-checked', next ? 'true' : 'false');
-  ash.setSettings({ startAtLogin: next }).then((r) => {
+  api.setSettings({ startAtLogin: next }).then((r) => {
     config = r.config;
   });
 });
@@ -310,23 +310,23 @@ document.querySelectorAll('[data-close-modal]').forEach((b) =>
 );
 
 // ---------- live events ----------
-ash.onDrivesUpdate((d) => {
+api.onDrivesUpdate((d) => {
   drives = d || [];
   render();
 });
 
-ash.onBackupAsk((p) => {
+api.onBackupAsk((p) => {
   pending.set(p.id, { name: p.name, folder: p.folder });
   renderBanners();
   render();
 });
 
-ash.onBackupStart((p) => {
+api.onBackupStart((p) => {
   progress.set(p.id, { copied: 0, skipped: 0, bytes: 0 });
   render();
 });
 
-ash.onBackupProgress((p) => {
+api.onBackupProgress((p) => {
   progress.set(p.id, {
     copied: p.copied,
     skipped: p.skipped,
@@ -343,16 +343,16 @@ ash.onBackupProgress((p) => {
   }
 });
 
-ash.onBackupDone(async (p) => {
+api.onBackupDone(async (p) => {
   progress.delete(p.id);
-  state = await ash.getState();
+  state = await api.getState();
   render();
 });
 
 // ---------- init ----------
 (async function init() {
-  config = await ash.getConfig();
-  state = await ash.getState();
-  drives = await ash.listDrives();
+  config = await api.getConfig();
+  state = await api.getState();
+  drives = await api.listDrives();
   render();
 })();

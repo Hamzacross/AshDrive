@@ -6,6 +6,9 @@ directories:
   buildResources: build
 files:
   - src/**/*
+  - build/icon.png
+  - build/tray.png
+  - build/trayTemplate.png
   - package.json
   - electron-builder.yml
 asar: true

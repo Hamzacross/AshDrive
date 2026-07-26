@@ -115,7 +115,9 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   mainWindow.once('ready-to-show', () => {
-    if (!SMOKE) mainWindow.show();
+    if (SMOKE) return;
+    mainWindow.maximize();
+    mainWindow.show();
   });
 
   mainWindow.on('close', (e) => {

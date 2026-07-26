@@ -9,12 +9,14 @@
     "start": "electron .",
     "icon": "node scripts/make-icon.mjs",
     "test": "node scripts/test.cjs",
+    "test:ui": "playwright test",
     "smoke": "electron . --smoke",
     "dist:win": "electron-builder --win --publish never",
     "dist:mac": "electron-builder --mac --publish never",
     "dist:all": "electron-builder -mwl --publish never"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "sharp": "^0.35.3"
