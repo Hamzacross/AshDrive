@@ -84,6 +84,49 @@ const activeBackups = new Map();
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const statePath = path.join(app.getPath('userData'), 'state.json');
+const historyPath = path.join(app.getPath('userData'), 'history');
+const manifestPath = path.join(app.getPath('userData'), 'manifests');
+
+function manifestFile(id) {
+  return path.join(manifestPath, `${id}.json`);
+}
+
+function historyFile(id, eventId) {
+  return path.join(historyPath, id, `${eventId}.json`);
+}
+
+async function readJson(file, fallback) {
+  try {
+    return JSON.parse(await fsp.readFile(file, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+async function writeJsonAtomically(file, value) {
+  await fsp.mkdir(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
+  await fsp.writeFile(temporary, JSON.stringify(value));
+  await fsp.rename(temporary, file);
+}
+
+async function loadBackupManifest(id) {
+  return readJson(manifestFile(id), {});
+}
+
+async function saveBackupManifest(id, manifest) {
+  await writeJsonAtomically(manifestFile(id), manifest);
+}
+
+async function saveHistoryDetails(id, event) {
+  await writeJsonAtomically(historyFile(id, event.id), event);
+  const retained = new Set((state[id].history || []).map((item) => `${item.id}.json`));
+  const directory = path.join(historyPath, id);
+  const files = await fsp.readdir(directory).catch(() => []);
+  await Promise.all(files
+    .filter((file) => file.endsWith('.json') && !retained.has(file))
+    .map((file) => fsp.rm(path.join(directory, file), { force: true }).catch(() => {})));
+}
 
 // ---------- config / state persistence ----------
 async function loadConfig() {
@@ -259,7 +302,7 @@ async function backupConfigNow(id) {
   await runBackup(cfg, drive);
 }
 
-function recordBackupResult(id, summary) {
+function recordBackupResult(id, summary, detail = {}) {
   const previousHistory = Array.isArray(state[id] && state[id].history) ? state[id].history : [];
   const status = summary.error
     ? 'failed'
@@ -271,16 +314,34 @@ function recordBackupResult(id, summary) {
           ? 'warning'
           : 'complete';
   const event = {
+    id: crypto.randomUUID(),
     at: summary.lastAttempt || summary.lastBackup || new Date().toISOString(),
     status,
     copied: summary.copied || 0,
     skipped: summary.skipped || 0,
     errors: summary.errors || 0,
     bytes: summary.bytes || 0,
+    totalFiles: summary.totalFiles || 0,
+    durationMs: detail.startedAt && detail.finishedAt ? Math.max(0, detail.finishedAt - detail.startedAt) : 0,
+    filesChanged: (detail.changes || []).length,
+    failedFiles: (detail.failedFiles || []).length,
+    retainedFiles: (detail.retainedFiles || []).length,
     error: summary.error || null,
   };
   state[id] = { ...summary, history: [event, ...previousHistory].slice(0, 50) };
   return state[id];
+}
+
+async function recordBackupRun(id, summary, detail = {}) {
+  const result = recordBackupResult(id, summary, detail);
+  await saveHistoryDetails(id, {
+    ...result.history[0],
+    changes: detail.changes || [],
+    failedFiles: detail.failedFiles || [],
+    retainedFiles: detail.retainedFiles || [],
+    errorDetails: detail.errorDetails || [],
+  }).catch((error) => console.error('Could not save backup history details:', error));
+  return result;
 }
 
 async function runBackup(cfg, drive) {
@@ -295,15 +356,19 @@ async function runBackup(cfg, drive) {
   notify(mt('backingUp', cfg.name), mt('copyingTo', cfg.backupFolder));
 
   try {
+    const previousManifest = await loadBackupManifest(cfg.id);
     const stats = await backupDrive({
       source: drive.mountpoint,
       dest,
+      previousManifest,
+      previousBackupAt: state[cfg.id] && state[cfg.id].lastBackup,
       onProgress: (p) => sendToRenderer('backup:progress', { id: cfg.id, ...p }),
       shouldStop: () => controller.signal.aborted,
     });
+    await saveBackupManifest(cfg.id, stats.manifest || previousManifest);
 
     if (stats.removedMidCopy) {
-      state[cfg.id] = recordBackupResult(cfg.id, {
+      state[cfg.id] = await recordBackupRun(cfg.id, {
         ...(state[cfg.id] || {}),
         lastAttempt: new Date().toISOString(),
         mountpoint: drive.mountpoint,
@@ -315,7 +380,7 @@ async function runBackup(cfg, drive) {
         aborted: true,
         incomplete: true,
         error: 'Drive removed during backup',
-      });
+      }, stats);
       await saveState();
       notify(mt('removedDuring', cfg.name), mt('incompletePlug'));
       sendToRenderer('backup:done', { id: cfg.id, summary: state[cfg.id] });
@@ -339,7 +404,7 @@ async function runBackup(cfg, drive) {
       summary.lastBackup = attemptedAt;
       delete summary.error;
     } else delete summary.error;
-    recordBackupResult(cfg.id, summary);
+    await recordBackupRun(cfg.id, summary, stats);
     await saveState();
 
     if (stats.aborted) {
@@ -357,12 +422,12 @@ async function runBackup(cfg, drive) {
     }
     sendToRenderer('backup:done', { id: cfg.id, summary });
   } catch (e) {
-    state[cfg.id] = recordBackupResult(cfg.id, {
+    state[cfg.id] = await recordBackupRun(cfg.id, {
       ...(state[cfg.id] || {}),
       error: e.message,
       incomplete: true,
       lastAttempt: new Date().toISOString(),
-    });
+    }, { errorDetails: [e.message] });
     await saveState();
     notify(mt('failed'), mt('failedBody', cfg.name, e.message));
     sendToRenderer('backup:done', { id: cfg.id, error: e.message, summary: state[cfg.id] });
@@ -454,6 +519,12 @@ async function tick() {
 // ---------- IPC ----------
 ipcMain.handle('config:get', () => config);
 ipcMain.handle('state:get', () => state);
+ipcMain.handle('history:get', async (_e, { driveId, eventId } = {}) => {
+  if (!/^[\w-]+$/.test(driveId || '') || !/^[\w-]+$/.test(eventId || '')) return null;
+  const event = (state[driveId] && state[driveId].history || []).find((item) => item.id === eventId);
+  if (!event) return null;
+  return readJson(historyFile(driveId, eventId), event);
+});
 
 ipcMain.handle('drives:list', async () => {
   knownDrives = await listRemovableDrives();

@@ -176,6 +176,34 @@
       </div>
     </div>
 
+    <!-- Backup history details -->
+    <div class="modal-overlay" id="historyModal" hidden>
+      <div class="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+        <div class="modal-head">
+          <h3 id="historyTitle" data-i18n="historyTitle">Backup details</h3>
+          <button class="icon-btn" data-close-modal aria-label="Close" data-i18n-aria="close">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="history-date"><span data-i18n="historyDate">Created</span><strong id="historyDateValue"></strong></div>
+          <h4 data-i18n="historySummary">Summary</h4>
+          <div class="history-stats" id="historyStats"></div>
+          <h4 data-i18n="changedFiles">Files added or updated</h4>
+          <div class="history-files" id="historyFiles"></div>
+          <div id="historyRetained" hidden>
+            <h4 data-i18n="retainedTitle">Files kept locally because they are no longer on the drive</h4>
+            <div class="history-files" id="historyRetainedFiles"></div>
+          </div>
+          <div id="historyFailures" hidden>
+            <h4 data-i18n="failedFiles">Files that could not be copied</h4>
+            <div class="history-files" id="historyFailedFiles"></div>
+          </div>
+        </div>
+        <div class="modal-foot"><button class="btn ghost" data-close-modal data-i18n="close">Close</button></div>
+      </div>
+    </div>
+
     <script src="i18n.js"></script>
     <script src="app.js"></script>
   </body>

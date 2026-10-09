@@ -107,7 +107,7 @@ function renderActivity() {
   const names = new Map((config.drives || []).map((dc) => [dc.id, dc.name]));
   const events = Object.entries(state).flatMap(([id, item]) => {
     if (Array.isArray(item.history) && item.history.length) {
-      return item.history.map((event) => ({ ...event, name: names.get(id) || 'Drive' }));
+      return item.history.map((event) => ({ ...event, driveId: id, name: names.get(id) || 'Drive' }));
     }
     return item.lastBackup ? [{
       at: item.lastBackup,
@@ -117,7 +117,7 @@ function renderActivity() {
       errors: item.errors || 0,
       name: names.get(id) || 'Drive',
     }] : [];
-  }).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6);
+  }).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 50);
 
   if (!events.length) {
     activityListEl.innerHTML = `<div class="activity-empty">${esc(tr('emptyActivity'))}</div>`;
@@ -127,13 +127,62 @@ function renderActivity() {
     const tone = ['complete', 'warning', 'failed', 'incomplete', 'stopped'].includes(event.status)
       ? event.status : 'complete';
     const summary = event.error || `${event.copied || 0} ${tr('copied')} · ${event.skipped || 0} ${tr('unchanged')}${event.errors ? ` · ${event.errors} ${tr('errors')}` : ''}`;
-    return `<div class="activity-row">
+    return `<button type="button" class="activity-row" data-history-drive="${esc(event.driveId || '')}" data-history-event="${esc(event.id || '')}" aria-label="${esc(`${event.name} ${new Date(event.at).toLocaleString()}`)}">
       <span class="activity-mark ${tone}"></span>
       <div class="activity-main"><strong>${esc(event.name)}</strong><span>${esc(summary)}</span></div>
       <span class="activity-status ${tone}">${esc(tr(tone === 'failed' ? 'statusFailed' : tone))}</span>
       <time>${esc(timeAgo(event.at))}</time>
-    </div>`;
+    </button>`;
   }).join('');
+  activityListEl.querySelectorAll('[data-history-event]').forEach((row, index) => {
+    row.addEventListener('click', () => openHistory(events[index]));
+  });
+}
+
+function formatDateTime(iso) {
+  const locale = i18n.language === 'ar' ? 'ar' : undefined;
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(iso));
+}
+
+async function openHistory(event) {
+  const detail = event.id ? await api.getHistory(event.driveId, event.id) : event;
+  if (!detail) return;
+  const changes = Array.isArray(detail.changes) ? detail.changes : [];
+  const retainedFiles = Array.isArray(detail.retainedFiles) ? detail.retainedFiles : [];
+  const failedFiles = Array.isArray(detail.failedFiles) ? detail.failedFiles : [];
+  const errorDetails = Array.isArray(detail.errorDetails) ? detail.errorDetails : [];
+  const modal = document.getElementById('historyModal');
+  document.getElementById('historyTitle').textContent = `${tr('historyTitle')} · ${event.name}`;
+  document.getElementById('historyDateValue').textContent = formatDateTime(detail.at || event.at);
+  const stats = [
+    `${tr(detail.status || event.status || 'complete')}`,
+    `${detail.totalFiles || 0} ${tr('scanned')}`,
+    `${detail.copied || 0} ${tr('copied')}`,
+    `${detail.skipped || 0} ${tr('unchanged')}`,
+    `${detail.errors || 0} ${tr('errors')}`,
+    `${formatBytes(detail.bytes || 0)} ${tr('bytesCopied')}`,
+    `${retainedFiles.length} ${tr('keptLocal')}`,
+    `${Math.round((detail.durationMs || 0) / 1000)} ${tr('seconds')} ${tr('duration')}`,
+  ];
+  document.getElementById('historyStats').innerHTML = stats.map((value) => `<span class="history-stat">${esc(value)}</span>`).join('');
+
+  const filesEl = document.getElementById('historyFiles');
+  filesEl.innerHTML = changes.length
+    ? changes.map((file) => `<div class="history-file"><span class="history-file-action">${esc(tr(file.action === 'added' ? 'added' : 'updated'))}</span><span class="history-file-path">${esc(file.path)}</span><span>${esc(formatBytes(file.size))}</span></div>`).join('')
+    : `<div class="history-empty">${esc(tr('noFilesChanged'))}</div>`;
+
+  document.getElementById('historyRetained').hidden = retainedFiles.length === 0;
+  document.getElementById('historyRetainedFiles').innerHTML = retainedFiles.map((file) =>
+    `<div class="history-file"><span class="history-file-action">${esc(tr('keptLocal'))}</span><span class="history-file-path">${esc(file.path)}</span><span>${esc(formatBytes(file.size))}</span></div>`
+  ).join('');
+
+  const failuresEl = document.getElementById('historyFailures');
+  failuresEl.hidden = failedFiles.length === 0 && errorDetails.length === 0;
+  document.getElementById('historyFailedFiles').innerHTML = [
+    ...failedFiles.map((file) => `<div class="history-file"><span class="history-file-action">${esc(tr('failed'))}</span><span class="history-file-path">${esc(file.path)}</span><span>${esc(file.message || '')}</span></div>`),
+    ...errorDetails.map((message) => `<div class="history-file"><span class="history-file-action">${esc(tr('failed'))}</span><span class="history-file-path">${esc(message)}</span></div>`),
+  ].join('');
+  modal.hidden = false;
 }
 
 function renderCard(dc) {
@@ -367,6 +416,7 @@ saveDrive.addEventListener('click', async () => {
 
 // ---------- settings modal ----------
 const settingsModal = document.getElementById('settingsModal');
+const historyModal = document.getElementById('historyModal');
 const loginToggle = document.getElementById('loginToggle');
 const versionLabel = document.getElementById('versionLabel');
 
@@ -406,10 +456,11 @@ document.querySelectorAll('[data-close-modal]').forEach((b) =>
   b.addEventListener('click', () => {
     addModal.hidden = true;
     settingsModal.hidden = true;
+    historyModal.hidden = true;
   })
 );
 
-[addModal, settingsModal].forEach((m) =>
+[addModal, settingsModal, historyModal].forEach((m) =>
   m.addEventListener('click', (e) => {
     if (e.target === m) m.hidden = true;
   })

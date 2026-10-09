@@ -22,7 +22,9 @@ Release files include SHA-256 checksums. The installers are currently unsigned, 
 ## Features
 
 - Automatically backs up registered drives when connected, or asks first if you prefer.
-- Incrementally copies new and changed files; existing destination files are never deleted.
+- Tracks the versions seen on each flash drive and copies only new or changed drive files on later backups.
+- Preserves locally edited backup files when their flash-drive copies have not changed, and keeps local files when they are removed from the drive.
+- Click any backup in the activity log to see its date, copied files, errors, and files retained locally.
 - Stages each file before replacing its previous backup, so an interrupted copy does not leave a truncated destination file.
 - Stops a backup cleanly when its source drive is removed and reports incomplete or failed runs.
 - Matches drives using the persistent volume ID supplied by the OS when available.

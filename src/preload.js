@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('ash', {
   // queries
   getConfig: () => ipcRenderer.invoke('config:get'),
   getState: () => ipcRenderer.invoke('state:get'),
+  getHistory: (driveId, eventId) => ipcRenderer.invoke('history:get', { driveId, eventId }),
   listDrives: () => ipcRenderer.invoke('drives:list'),
   getAppInfo: () => ipcRenderer.invoke('app:info'),
   openRepository: () => ipcRenderer.invoke('app:open-repository'),

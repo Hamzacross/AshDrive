@@ -51,12 +51,19 @@ async function destDiffers(srcStat, destPath) {
   return false;
 }
 
+function sameSourceVersion(previous, srcStat) {
+  return Boolean(previous)
+    && Number(previous.size) === srcStat.size
+    && Math.abs(Number(previous.mtimeMs) - srcStat.mtimeMs) <= 1
+    && Math.abs(Number(previous.ctimeMs) - srcStat.ctimeMs) <= 1;
+}
+
 /**
  * Incrementally copy `source` (a flash mountpoint) into `dest`.
  * New/changed files are copied; identical files (size + mtime) are skipped.
  * Files are never deleted from the destination, so the backup is a safe superset.
  */
-async function backupDrive({ source, dest, onProgress, shouldStop }) {
+async function backupDrive({ source, dest, onProgress, shouldStop, previousManifest = {}, previousBackupAt }) {
   const sourcePath = path.resolve(source);
   const destPath = path.resolve(dest);
   const relativeDest = path.relative(sourcePath, destPath);
@@ -70,6 +77,10 @@ async function backupDrive({ source, dest, onProgress, shouldStop }) {
       errors: 0,
       totalFiles: 0,
       bytes: 0,
+      changes: [],
+      failedFiles: [],
+      retainedFiles: [],
+      manifest: { ...previousManifest },
       startedAt: Date.now(),
       finishedAt: Date.now(),
       aborted: true,
@@ -84,6 +95,10 @@ async function backupDrive({ source, dest, onProgress, shouldStop }) {
     errors: 0,
     totalFiles: 0,
     bytes: 0,
+    changes: [],
+    failedFiles: [],
+    retainedFiles: [],
+    manifest: { ...previousManifest },
     startedAt: Date.now(),
     finishedAt: null,
     aborted: false,
@@ -92,6 +107,7 @@ async function backupDrive({ source, dest, onProgress, shouldStop }) {
 
   // If the drive disappears mid-copy, every remaining file would error.
   // Check the source once per file and stop cleanly instead.
+  const seenFiles = new Set();
   for await (const item of walk(source, source, (dir, error) => {
     if (fs.existsSync(source)) {
       stats.errors++;
@@ -115,6 +131,7 @@ async function backupDrive({ source, dest, onProgress, shouldStop }) {
       continue;
     }
 
+    seenFiles.add(item.rel);
     stats.totalFiles++;
     let srcStat;
     try {
@@ -131,10 +148,38 @@ async function backupDrive({ source, dest, onProgress, shouldStop }) {
       continue;
     }
 
-    if (!(await destDiffers(srcStat, targetPath))) {
+    const previous = previousManifest[item.rel];
+    const sourceChanged = previous && !sameSourceVersion(previous, srcStat);
+    const targetMissing = !fs.existsSync(targetPath);
+
+    // Once a source version has been backed up, local edits to the backup are
+    // left alone while the flash copy is unchanged. A changed flash version is
+    // copied over; files missing from the flash are never deleted locally.
+    if (previous && !sourceChanged && !targetMissing) {
       stats.skipped++;
+      stats.manifest[item.rel] = { size: srcStat.size, mtimeMs: srcStat.mtimeMs, ctimeMs: srcStat.ctimeMs };
       continue;
     }
+
+    if (!previous && !targetMissing) {
+      const destinationMatches = !(await destDiffers(srcStat, targetPath));
+      let localChangedSinceBackup = false;
+      const previousBackupMs = Date.parse(previousBackupAt || '');
+      if (!destinationMatches && Number.isFinite(previousBackupMs)) {
+        try {
+          const destStat = await fsp.stat(targetPath);
+          localChangedSinceBackup = destStat.mtimeMs > previousBackupMs + 1
+            && srcStat.mtimeMs <= previousBackupMs + 1;
+        } catch { /* treat a disappearing destination as needing a copy */ }
+      }
+      if (destinationMatches || localChangedSinceBackup) {
+        stats.skipped++;
+        stats.manifest[item.rel] = { size: srcStat.size, mtimeMs: srcStat.mtimeMs, ctimeMs: srcStat.ctimeMs };
+        continue;
+      }
+    }
+
+    const change = { path: item.rel, action: previous ? 'updated' : 'added', size: srcStat.size };
 
     try {
       await fsp.mkdir(path.dirname(targetPath), { recursive: true });
@@ -151,6 +196,8 @@ async function backupDrive({ source, dest, onProgress, shouldStop }) {
       }
       stats.copied++;
       stats.bytes += srcStat.size;
+      stats.changes.push(change);
+      stats.manifest[item.rel] = { size: srcStat.size, mtimeMs: srcStat.mtimeMs, ctimeMs: srcStat.ctimeMs };
       if (onProgress) {
         onProgress({
           rel: item.rel,
@@ -170,6 +217,7 @@ async function backupDrive({ source, dest, onProgress, shouldStop }) {
       }
       stats.errors++;
       stats.errorDetails.push(`copy failed: ${item.rel} — ${e.message}`);
+      stats.failedFiles.push({ path: item.rel, message: e.message });
     }
   }
 
@@ -184,6 +232,12 @@ async function backupDrive({ source, dest, onProgress, shouldStop }) {
   }
 
   if (shouldStop && shouldStop()) stats.aborted = true;
+
+  if (!stats.aborted && stats.errors === 0) {
+    for (const [rel, previous] of Object.entries(previousManifest)) {
+      if (!seenFiles.has(rel)) stats.retainedFiles.push({ path: rel, size: Number(previous.size) || 0 });
+    }
+  }
 
   stats.finishedAt = Date.now();
   return stats;
