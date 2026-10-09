@@ -34,7 +34,7 @@ test('app boots and shows the main window', async () => {
   await win.waitForLoadState('domcontentloaded');
   await expect(win.locator('.brand-name')).toHaveText('AshDrive');
   await expect(win.locator('#statRegistered')).toHaveText('0');
-  await expect(win.locator('#activityTitle')).toHaveText('Recent activity');
+  await expect(win.locator('#activityTitle')).toHaveText('Backup history');
 });
 
 test('Add drive button opens the Add drive modal', async () => {
@@ -105,7 +105,7 @@ test('Arabic language switches the full dashboard to right-to-left and persists'
   await expect(win.locator('html')).toHaveAttribute('lang', 'ar');
   await expect(win.locator('html')).toHaveAttribute('dir', 'rtl');
   await expect(win.locator('[data-i18n="dashboard"]')).toHaveText('لوحة النسخ الاحتياطي');
-  await expect(win.locator('#activityTitle')).toHaveText('النشاط الأخير');
+  await expect(win.locator('#activityTitle')).toHaveText('سجل النسخ الاحتياطي');
   await expect(win.locator('#repoLink')).toHaveText('الشيفرة المصدرية');
   await win.reload();
   await expect(win.locator('html')).toHaveAttribute('dir', 'rtl');

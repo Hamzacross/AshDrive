@@ -5,8 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function run(command, args, options = {}) {
+  const { timeoutMs = 10000, ...spawnOptions } = options;
   return new Promise((resolve) => {
-    const child = spawn(command, args, { windowsHide: true, ...options });
+    const child = spawn(command, args, { windowsHide: true, ...spawnOptions });
     const out = [];
     const errors = [];
     let bytes = 0;
@@ -20,7 +21,7 @@ function run(command, args, options = {}) {
     const timer = setTimeout(() => {
       child.kill();
       finish({ err: new Error(`${command} timed out`), stdout: '', stderr: '' });
-    }, 10000);
+    }, timeoutMs);
     child.stdout.on('data', (chunk) => {
       bytes += chunk.length;
       if (bytes > 16 * 1024 * 1024) {
@@ -54,7 +55,11 @@ function humanSize(bytes) {
 async function listWindows() {
   const ps = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $d = Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2' | Select-Object DeviceID,VolumeName,Size,FreeSpace,FileSystem,VolumeSerialNumber; if ($d) { $d | ConvertTo-Json -Compress }";
   const encoded = Buffer.from(ps, 'utf16le').toString('base64');
-  const { stdout, err } = await run('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded]);
+  const { stdout, err } = await run(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
+    { timeoutMs: 30000 }
+  );
   if (err) throw err;
   const text = stdout.trim();
   if (!text) return [];
