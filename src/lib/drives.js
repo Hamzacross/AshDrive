@@ -84,12 +84,12 @@ async function listWindows() {
 
 // ---- macOS: removable volumes under /Volumes ----
 async function getMacVolumeInfo(mountpoint) {
-  const plist = require('plist');
+  const { parse } = await import('plist');
   const { stdout, err } = await run('diskutil', ['info', '-plist', mountpoint]);
   if (err || !stdout) return null;
   let p;
   try {
-    p = plist.parse(stdout.toString());
+    p = parse(stdout.toString());
   } catch {
     return null;
   }
