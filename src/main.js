@@ -35,13 +35,48 @@ let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 
-/** @type {{drives:Array, startAtLogin:boolean}} */
-let config = { drives: [], startAtLogin: true };
+/** @type {{drives:Array, startAtLogin:boolean, language:string}} */
+let config = { drives: [], startAtLogin: true, language: 'en' };
+const mainMessages = {
+  en: {
+    show: 'Show AshDrive', backupNow: 'Back up now:', quit: 'Quit', notPlugged: 'not plugged in',
+    insertToBackup: (name) => `Insert ${name} to back it up.`, backingUp: (name) => `Backing up ${name}…`,
+    copyingTo: (folder) => `Copying to ${folder}`, removedDuring: (name) => `${name} removed during backup`,
+    incompletePlug: 'Backup is incomplete. Plug it back in to finish.', stopped: 'Backup stopped',
+    stoppedBody: (name) => `${name}: the backup was stopped. Start it again to finish.`,
+    warnings: 'Backup complete (with warnings)', complete: 'Backup complete',
+    copiedSummary: (name, copied, errors) => `${name}: ${copied} copied, ${errors} could not be copied.`,
+    completeSummary: (name, copied, skipped) => `${name}: ${copied} new/changed, ${skipped} unchanged.`,
+    failed: 'Backup failed', failedBody: (name, error) => `${name}: ${error}`,
+    plugged: (name) => `${name} plugged in`, ask: (folder) => `Back up to ${folder}?`,
+    detected: 'Drive detected', detectedBody: (name) => `${name} inserted. Open AshDrive to set up backup.`,
+    removed: (name) => `${name} removed`, safeToUnplug: (when) => `Safe to unplug. Last backup: ${when}.`,
+  },
+  ar: {
+    show: 'إظهار AshDrive', backupNow: 'نسخ احتياطي الآن:', quit: 'إنهاء', notPlugged: 'غير متصلة',
+    insertToBackup: (name) => `صِل ${name} لبدء النسخ الاحتياطي.`, backingUp: (name) => `جارٍ نسخ ${name}…`,
+    copyingTo: (folder) => `النسخ إلى ${folder}`, removedDuring: (name) => `تم فصل ${name} أثناء النسخ`,
+    incompletePlug: 'النسخة غير مكتملة. أعد توصيل الوحدة لإكمالها.', stopped: 'تم إيقاف النسخ',
+    stoppedBody: (name) => `${name}: تم إيقاف النسخ. ابدأه مجدداً لإكماله.`,
+    warnings: 'اكتمل النسخ مع تنبيهات', complete: 'اكتمل النسخ',
+    copiedSummary: (name, copied, errors) => `${name}: نُسخ ${copied} ملف وتعذر نسخ ${errors}.`,
+    completeSummary: (name, copied, skipped) => `${name}: نُسخ ${copied} جديد أو متغير، وتُرك ${skipped} دون تغيير.`,
+    failed: 'فشل النسخ الاحتياطي', failedBody: (name, error) => `${name}: ${error}`,
+    plugged: (name) => `تم توصيل ${name}`, ask: (folder) => `هل تريد النسخ إلى ${folder}؟`,
+    detected: 'تم اكتشاف وحدة', detectedBody: (name) => `تم توصيل ${name}. افتح AshDrive لإعداد النسخ.`,
+    removed: (name) => `تم فصل ${name}`, safeToUnplug: (when) => `يمكنك فصلها بأمان. آخر نسخة: ${when}.`,
+  },
+};
+function mt(key, ...args) {
+  const entry = mainMessages[config.language === 'ar' ? 'ar' : 'en'][key];
+  return typeof entry === 'function' ? entry(...args) : entry;
+}
 /** @type {Object<string, object>} id -> last backup summary */
 let state = {};
 /** currently detected removable drives */
 let knownDrives = [];
 let firstTick = true;
+let polling = false;
 /** id -> { drive, driveConfig } — ask-mode drives awaiting a decision */
 const pendingAsk = new Map();
 /** id -> true — backups currently running */
@@ -58,9 +93,10 @@ async function loadConfig() {
     config = {
       drives: Array.isArray(parsed.drives) ? parsed.drives : [],
       startAtLogin: parsed.startAtLogin !== false,
+      language: parsed.language === 'ar' ? 'ar' : 'en',
     };
   } catch {
-    config = { drives: [], startAtLogin: true };
+    config = { drives: [], startAtLogin: true, language: 'en' };
   }
 }
 
@@ -108,7 +144,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
 
@@ -151,20 +187,22 @@ function createTray() {
   if (isMac) img.setTemplateImage(true);
   tray = new Tray(img);
   tray.setToolTip('AshDrive');
+  tray.on('click', showMainWindow);
+  tray.on('double-click', showMainWindow);
   rebuildTrayMenu();
 }
 
 function rebuildTrayMenu() {
   if (!tray) return;
   const items = [];
-  items.push({ label: 'Show AshDrive', click: () => showMainWindow() });
+  items.push({ label: mt('show'), click: () => showMainWindow() });
 
   const presentConfigs = config.drives.filter((dc) =>
     knownDrives.some((d) => matchIdentity(d, dc.identity))
   );
   if (presentConfigs.length) {
     items.push({ type: 'separator' });
-    items.push({ label: 'Back up now:', enabled: false });
+    items.push({ label: mt('backupNow'), enabled: false });
     for (const dc of presentConfigs) {
       items.push({
         label: dc.name,
@@ -173,7 +211,7 @@ function rebuildTrayMenu() {
     }
   }
   items.push({ type: 'separator' });
-  items.push({ label: 'Quit', click: () => quitApp() });
+  items.push({ label: mt('quit'), click: () => quitApp() });
   tray.setContextMenu(Menu.buildFromTemplate(items));
 }
 
@@ -215,32 +253,79 @@ async function backupConfigNow(id) {
   if (!cfg) return;
   const drive = findPresentDriveFor(cfg);
   if (!drive) {
-    notify(`${cfg.name} not plugged in`, `Insert ${cfg.name} to back it up.`);
+    notify(`${cfg.name} ${mt('notPlugged')}`, mt('insertToBackup', cfg.name));
     return;
   }
   await runBackup(cfg, drive);
 }
 
+function recordBackupResult(id, summary) {
+  const previousHistory = Array.isArray(state[id] && state[id].history) ? state[id].history : [];
+  const status = summary.error
+    ? 'failed'
+    : summary.aborted
+      ? 'stopped'
+      : summary.incomplete
+        ? 'incomplete'
+        : summary.errors > 0
+          ? 'warning'
+          : 'complete';
+  const event = {
+    at: summary.lastAttempt || summary.lastBackup || new Date().toISOString(),
+    status,
+    copied: summary.copied || 0,
+    skipped: summary.skipped || 0,
+    errors: summary.errors || 0,
+    bytes: summary.bytes || 0,
+    error: summary.error || null,
+  };
+  state[id] = { ...summary, history: [event, ...previousHistory].slice(0, 50) };
+  return state[id];
+}
+
 async function runBackup(cfg, drive) {
   if (activeBackups.get(cfg.id)) return;
   pendingAsk.delete(cfg.id);
-  activeBackups.set(cfg.id, true);
+  const controller = new AbortController();
+  activeBackups.set(cfg.id, controller);
   rebuildTrayMenu();
 
   const dest = path.join(cfg.backupFolder, sanitizeFolderName(cfg.name));
   sendToRenderer('backup:start', { id: cfg.id, name: cfg.name });
-  notify(`Backing up ${cfg.name}…`, `Copying to ${cfg.backupFolder}`);
+  notify(mt('backingUp', cfg.name), mt('copyingTo', cfg.backupFolder));
 
   try {
     const stats = await backupDrive({
       source: drive.mountpoint,
       dest,
       onProgress: (p) => sendToRenderer('backup:progress', { id: cfg.id, ...p }),
-      shouldStop: () => false,
+      shouldStop: () => controller.signal.aborted,
     });
 
+    if (stats.removedMidCopy) {
+      state[cfg.id] = recordBackupResult(cfg.id, {
+        ...(state[cfg.id] || {}),
+        lastAttempt: new Date().toISOString(),
+        mountpoint: drive.mountpoint,
+        copied: stats.copied,
+        skipped: stats.skipped,
+        errors: stats.errors,
+        bytes: stats.bytes,
+        totalFiles: stats.totalFiles,
+        aborted: true,
+        incomplete: true,
+        error: 'Drive removed during backup',
+      });
+      await saveState();
+      notify(mt('removedDuring', cfg.name), mt('incompletePlug'));
+      sendToRenderer('backup:done', { id: cfg.id, summary: state[cfg.id] });
+      return;
+    }
+
+    const attemptedAt = new Date().toISOString();
     const summary = {
-      lastBackup: new Date().toISOString(),
+      ...(state[cfg.id] || {}),
+      lastAttempt: attemptedAt,
       mountpoint: drive.mountpoint,
       copied: stats.copied,
       skipped: stats.skipped,
@@ -248,27 +333,39 @@ async function runBackup(cfg, drive) {
       bytes: stats.bytes,
       totalFiles: stats.totalFiles,
       aborted: stats.aborted,
+      incomplete: stats.aborted,
     };
-    state[cfg.id] = summary;
+    if (!stats.aborted) {
+      summary.lastBackup = attemptedAt;
+      delete summary.error;
+    } else delete summary.error;
+    recordBackupResult(cfg.id, summary);
     await saveState();
 
     if (stats.aborted) {
-      notify(`Backup canceled`, `${cfg.name}: backup was canceled.`);
+      notify(mt('stopped'), mt('stoppedBody', cfg.name));
     } else if (stats.errors > 0) {
       notify(
-        `Backup complete (with warnings)`,
-        `${cfg.name}: ${stats.copied} copied, ${stats.errors} could not be copied.`
+        mt('warnings'),
+        mt('copiedSummary', cfg.name, stats.copied, stats.errors)
       );
     } else {
       notify(
-        `Backup complete`,
-        `${cfg.name}: ${stats.copied} new/changed, ${stats.skipped} unchanged.`
+        mt('complete'),
+        mt('completeSummary', cfg.name, stats.copied, stats.skipped)
       );
     }
     sendToRenderer('backup:done', { id: cfg.id, summary });
   } catch (e) {
-    notify(`Backup failed`, `${cfg.name}: ${e.message}`);
-    sendToRenderer('backup:done', { id: cfg.id, error: e.message });
+    state[cfg.id] = recordBackupResult(cfg.id, {
+      ...(state[cfg.id] || {}),
+      error: e.message,
+      incomplete: true,
+      lastAttempt: new Date().toISOString(),
+    });
+    await saveState();
+    notify(mt('failed'), mt('failedBody', cfg.name, e.message));
+    sendToRenderer('backup:done', { id: cfg.id, error: e.message, summary: state[cfg.id] });
   } finally {
     activeBackups.delete(cfg.id);
     rebuildTrayMenu();
@@ -277,7 +374,7 @@ async function runBackup(cfg, drive) {
 
 function askBackup(cfg, drive) {
   pendingAsk.set(cfg.id, { drive, driveConfig: cfg });
-  notify(`${cfg.name} plugged in`, `Back up to ${cfg.backupFolder}?`, {
+  notify(mt('plugged', cfg.name), mt('ask', cfg.backupFolder), {
     onClick: () => showMainWindow(),
   });
   sendToRenderer('backup:ask', {
@@ -294,8 +391,8 @@ function evaluateDrive(drive, { silentUnknown = false } = {}) {
   if (!cfg) {
     if (!silentUnknown) {
       notify(
-        'Drive detected',
-        `${displayName(drive)} inserted. Open AshDrive to set up backup.`,
+        mt('detected'),
+        mt('detectedBody', displayName(drive)),
         { onClick: () => showMainWindow() }
       );
     }
@@ -310,16 +407,22 @@ function evaluateDrive(drive, { silentUnknown = false } = {}) {
 
 function onDriveRemoved(drive) {
   const cfg = config.drives.find((dc) => matchIdentity(drive, dc.identity));
+  if (cfg) {
+    const controller = activeBackups.get(cfg.id);
+    if (controller) controller.abort();
+  }
   pendingAsk.delete(cfg && cfg.id);
   if (cfg) {
     const last = state[cfg.id];
     const when = last && last.lastBackup ? new Date(last.lastBackup).toLocaleString() : 'never';
-    notify(`${cfg.name} removed`, `Safe to unplug. Last backup: ${when}.`);
+    notify(mt('removed', cfg.name), mt('safeToUnplug', when));
   }
   sendToRenderer('drives:update', knownDrives);
 }
 
 async function tick() {
+  if (polling) return;
+  polling = true;
   try {
     const drives = await listRemovableDrives();
     const prevMap = new Map(knownDrives.map((d) => [d.mountpoint, d]));
@@ -344,6 +447,7 @@ async function tick() {
     console.error('poll error:', e);
   } finally {
     firstTick = false;
+    polling = false;
   }
 }
 
@@ -411,6 +515,12 @@ ipcMain.handle('backup:now', async (_e, id) => {
   return { ok: true };
 });
 
+ipcMain.handle('backup:cancel', (_e, id) => {
+  const controller = activeBackups.get(id);
+  if (controller) controller.abort();
+  return { ok: Boolean(controller) };
+});
+
 ipcMain.handle('backup:respond', async (_e, { id, accept }) => {
   const pending = pendingAsk.get(id);
   pendingAsk.delete(id);
@@ -430,6 +540,11 @@ ipcMain.handle('settings:set', async (_e, patch) => {
     }
     await saveConfig();
   }
+  if (patch && patch.language !== undefined) {
+    config.language = patch.language === 'ar' ? 'ar' : 'en';
+    await saveConfig();
+    rebuildTrayMenu();
+  }
   return { ok: true, config };
 });
 
@@ -442,6 +557,11 @@ ipcMain.handle('app:info', () => ({
   version: app.getVersion(),
   platform: process.platform,
 }));
+
+ipcMain.handle('app:open-repository', async () => {
+  await shell.openExternal('https://github.com/Hamzacross/AshDrive');
+  return { ok: true };
+});
 
 // ---------- app lifecycle ----------
 const gotLock = app.requestSingleInstanceLock();
@@ -475,6 +595,9 @@ if (!gotLock) {
         }, 2500);
       });
     } else {
+      // Startup check: any configured drive already plugged in is evaluated
+      // (auto backup runs if enabled, otherwise it asks). Drives that are
+      // missing are simply ignored until they are inserted.
       tick();
       setInterval(tick, POLL_INTERVAL);
     }

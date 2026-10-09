@@ -1,116 +1,93 @@
-<div align="center">
-
-<img src="build/icon.png" width="110" height="110" alt="AshDrive" />
-
 # AshDrive
 
-**Plug in a flash drive → it backs itself up.**
+**Automatic, local backups for removable drives.**
 
-AshDrive watches for your USB / flash drives and backs them up automatically — on **Windows** and **macOS**.
+AshDrive watches for registered USB drives and keeps a safe, incremental copy in a folder you choose. It runs quietly from the system tray, supports English and Arabic, and never sends your files to a server.
 
-[![CI](https://github.com/Hamacross/AshDrive/actions/workflows/build.yml/badge.svg)](https://github.com/Hamacross/AshDrive/actions/workflows/build.yml)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blueviolet)](#)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build](https://github.com/Hamzacross/AshDrive/actions/workflows/build.yml/badge.svg)](https://github.com/Hamzacross/AshDrive/actions/workflows/build.yml)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-16786d)](#downloads)
+[![License: MIT](https://img.shields.io/badge/license-MIT-66736e.svg)](LICENSE)
 
-</div>
+## Downloads
 
----
+Get the latest installers from [GitHub Releases](https://github.com/Hamzacross/AshDrive/releases).
 
-AshDrive lives in your system tray (or macOS menu bar) and watches for drives you've set up. When you plug one in, it either asks *"Back up to &lt;folder&gt;?"* or backs it up immediately and sends a notification. Backups are **incremental** — only new or changed files are copied — so repeat backups are fast, and your backup folder is always a safe, complete copy of the drive.
+| Platform | Installer | Notes |
+| --- | --- | --- |
+| Windows | `AshDrive-Setup-2.0.0.exe` | x64 NSIS installer; supports a custom install location |
+| macOS | `AshDrive-2.0.0-universal.dmg` | Universal build for Apple silicon and Intel |
 
-## ✨ Features
+Release files include SHA-256 checksums. The installers are currently unsigned, so Windows SmartScreen or macOS Gatekeeper may show a first-run warning.
 
-- **Automatic, hands-off backups** — plug in a configured drive and AshDrive does the rest.
-- **Two modes per drive:**
-  - _Ask_ — prompts you (notification + in-app banner) before backing up.
-  - _Auto_ — backs up on insertion and just notifies you when it's done.
-- **Incremental copies** — skips files that match on size + modified time; nothing is ever deleted from the backup.
-- **Cross-platform** — one app, one codebase, native notifications + tray on Windows and macOS.
-- **System-tray menu** with _Back up now_ for any plugged-in drive.
-- **Runs at login** (optional) so it's always watching.
-- **No native modules** — drive detection uses built-in OS tools (PowerShell on Windows, `diskutil` on macOS), so it builds cleanly and there's nothing to compile.
+## Features
 
-## 📦 Install
+- Automatically backs up registered drives when connected, or asks first if you prefer.
+- Incrementally copies new and changed files; existing destination files are never deleted.
+- Stages each file before replacing its previous backup, so an interrupted copy does not leave a truncated destination file.
+- Stops a backup cleanly when its source drive is removed and reports incomplete or failed runs.
+- Matches drives using the persistent volume ID supplied by the OS when available.
+- Shows connected status, drive capacity, backup history, and live copy progress.
+- Search and filter registered drives; stop an active backup from its card.
+- English and Arabic interface with right-to-left layout.
+- Runs in the system tray and can start when you log in.
 
-### Windows
-Run **`AshDrive-Setup-1.0.0.exe`** and follow the installer.
+## Get started
 
-> The app is unsigned, so Windows SmartScreen may warn on first launch — click **More info → Run anyway**. A portable copy (`AshDrive.exe`) is also in `dist/win-unpacked/`.
+1. Install and open AshDrive. Click the tray icon at any time to show its window.
+2. Connect a removable drive and choose **Add drive**.
+3. Choose where backups should be stored and whether backups should start automatically.
+4. Reconnect the drive whenever you want to update its backup.
 
-### macOS
-Open **`AshDrive-1.0.0-universal.dmg`**, drag **AshDrive** to **Applications**.
+AshDrive skips operating-system folders such as `System Volume Information`, `$RECYCLE.BIN`, `.Trashes`, and `.Spotlight-V100`. Backups are local and remain on your devices.
 
-> Unsigned on macOS too: right-click the app → **Open** → **Open** the first time, or run
-> `xattr -dr com.apple.quarantine /Applications/AshDrive.app`
+## Build from source
 
-## 🚀 Usage
-
-1. Launch AshDrive — it appears in your tray / menu bar.
-2. Click **Add drive**:
-   - Pick the detected flash drive.
-   - Choose a **backup folder**.
-   - Give it a name.
-   - Toggle **Back up automatically** on or off.
-3. That's it. Unplug and re-plug the drive — AshDrive backs it up (or asks first, depending on the mode).
-
-A drive is recognised by its **volume label + size**, so it stays "your drive" even if Windows assigns it a different letter next time.
-
-## 🛠️ Run from source
-
-Requirements: **Node.js 18+** (tested on Node 20 / 22).
+Requirements: Node.js 20 or later and npm.
 
 ```bash
 npm install
-npm run icon      # generate app + tray icons (one-time)
-npm start         # launch the app
-npm test          # logic tests (drive detection + backup engine)
+npm run icon
+npm start
 ```
 
-## 🔨 Build the installers
+Run the test suites:
 
-### Windows `.exe` (build on Windows)
+```bash
+npm test
+npm run test:ui
+npm run smoke
+```
+
+Build the Windows installer on Windows:
+
 ```bash
 npm run dist:win
 ```
-→ `dist/AshDrive-Setup-1.0.0.exe` (NSIS installer)
 
-### macOS `.dmg` (must build **on macOS**)
+Build the universal macOS disk image on macOS:
+
 ```bash
 npm run dist:mac
 ```
-→ `dist/AshDrive-1.0.0-universal.dmg` (Apple Silicon + Intel)
 
-> ⚠️ **A `.dmg` cannot be created on a Windows machine** — Apple's `hdiutil` only runs on macOS, and `electron-builder` enforces this. Two ways to get it:
-> - **Cloud (no Mac):** push to GitHub and run the **Build AshDrive** workflow (`.github/workflows/build.yml`) — it builds the `.dmg` on a macOS runner and the `.exe` on a Windows runner, then uploads both as artifacts. Public repos get free macOS runners.
-> - **Any Mac:** `npm install && npm run icon && npm run dist:mac`.
->
-> For real distribution, sign + notarize the Mac app (Apple Developer ID) and sign the Windows installer (code-signing certificate) to remove the warning prompts.
+Both platform builds can also be run from GitHub Actions. Pushing a version tag such as `v2.0.0` builds the Windows and macOS installers, creates SHA-256 checksums, and publishes a GitHub release with all artifacts attached.
 
-## 🧱 How it works
+## Project layout
 
-| Path | Role |
+| Path | Description |
 | --- | --- |
-| `src/main.js` | Electron main process: window, tray, drive polling, backup orchestration, notifications, IPC |
-| `src/preload.js` | Secure context bridge between renderer and main |
-| `src/renderer/` | The UI — drive cards, add-drive dialog, settings, prompts, progress |
-| `src/lib/drives.js` | Cross-platform removable-drive detection (pure JS, no native modules) |
-| `src/lib/backup.js` | Incremental folder copy with system-junk skipping |
-| `scripts/make-icon.mjs` | Renders the app + tray icons from SVG via `sharp` |
-| `electron-builder.yml` | Packaging config (NSIS for Windows, DMG for macOS) |
+| `src/main.js` | Electron window, tray, drive polling, backup orchestration, and IPC |
+| `src/preload.js` | Restricted API bridge for the renderer |
+| `src/lib/drives.js` | Windows, macOS, and Linux removable-volume detection |
+| `src/lib/backup.js` | Safe incremental copy engine |
+| `src/renderer/` | Dashboard, English/Arabic translations, and styles |
+| `scripts/` and `test/` | Logic, UI, packaging diagnostics, and icon generation |
+| `.github/workflows/build.yml` | Windows/macOS builds and tagged release publishing |
 
-Drive detection polls every 3 seconds using OS built-ins. System-managed folders (`System Volume Information`, `$RECYCLE.BIN`, `.Trashes`, `.Spotlight-V100`, `.fseventsd`, …) are skipped automatically.
+## Privacy and safety
 
-## ❓ FAQ
+AshDrive copies files only between local paths selected on your computer. It has no telemetry or cloud backup service. It skips symbolic links, never deletes files from the backup destination, and refuses to place a backup inside the drive being copied.
 
-**Why does the backup happen on insertion, not on removal?**
-A drive has to be present to read it. On removal, AshDrive instead notifies you that the drive was safely ejected and reminds you of the last backup time. You can also hit **Back up now** anytime while it's plugged in.
+## License
 
-**Will it back up every flash drive I plug in?**
-Only the drives you've added. Unknown drives get a one-line "detected — open AshDrive to set up" notification.
-
-**Is my data sent anywhere?**
-No. AshDrive copies files locally from the drive to a folder you choose. Nothing leaves your machine.
-
-## 📄 License
-
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

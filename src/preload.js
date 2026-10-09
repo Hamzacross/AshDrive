@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('ash', {
   getState: () => ipcRenderer.invoke('state:get'),
   listDrives: () => ipcRenderer.invoke('drives:list'),
   getAppInfo: () => ipcRenderer.invoke('app:info'),
+  openRepository: () => ipcRenderer.invoke('app:open-repository'),
 
   // config mutations
   addDrive: (payload) => ipcRenderer.invoke('config:add-drive', payload),
@@ -16,6 +17,7 @@ contextBridge.exposeInMainWorld('ash', {
 
   // backup actions
   backupNow: (id) => ipcRenderer.invoke('backup:now', id),
+  cancelBackup: (id) => ipcRenderer.invoke('backup:cancel', id),
   respondBackup: (id, accept) => ipcRenderer.invoke('backup:respond', { id, accept }),
 
   // settings + misc

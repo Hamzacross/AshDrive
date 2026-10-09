@@ -44,6 +44,9 @@ async function main() {
   assert(!matchIdentity({ label: 'MyFlash', size: 2000 }, a), 'different size does not match');
   assert(!matchIdentity({ label: 'Other', size: 1000 }, a), 'different label does not match');
   assert(matchIdentity({ label: '', size: 1000 }, makeIdentity({ label: '', size: 1000 })), 'empty label matches by size');
+  const physical = makeIdentity({ label: 'Old name', size: 1000, volumeId: 'test:volume-1' });
+  assert(matchIdentity({ label: 'Renamed', size: 900, volumeId: 'test:volume-1' }, physical), 'volume identity survives label and size changes');
+  assert(!matchIdentity({ label: 'Old name', size: 1000, volumeId: 'test:volume-2' }, physical), 'a different volume is not mistaken for a registered drive');
 
   console.log('\nBackup (incremental copy + skip system dirs):');
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'ashdrive-test-'));
@@ -71,6 +74,26 @@ async function main() {
   assert(s3.copied === 1, `third pass copies 1 changed file (got ${s3.copied})`);
   const content = await fsp.readFile(path.join(dst, 'a.txt'), 'utf8');
   assert(content === 'hello changed', 'changed content persisted to backup');
+  assert(!(await fsp.readdir(dst)).some((name) => name.endsWith('.tmp')), 'atomic copy leaves no staging files behind');
+
+  console.log('\nSafety and cancellation:');
+  let rejectedNestedDestination = false;
+  try {
+    await backupDrive({ source: src, dest: path.join(src, 'backup-inside') });
+  } catch (error) {
+    rejectedNestedDestination = /cannot be inside/.test(error.message);
+  }
+  assert(rejectedNestedDestination, 'backup refuses a destination inside its source');
+
+  let stopRequested = false;
+  const stopped = await backupDrive({
+    source: src,
+    dest: path.join(tmp, 'stopped-backup'),
+    shouldStop: () => stopRequested,
+    onProgress: () => { stopRequested = true; },
+  });
+  assert(stopped.aborted, 'backup responds to a stop request');
+  assert(stopped.copied === 1, 'backup stops between files without starting the next copy');
 
   await fsp.mkdir(path.join(src, 'System Volume Information'));
   await fsp.writeFile(path.join(src, 'System Volume Information', 'junk'), 'x');
@@ -92,6 +115,14 @@ async function main() {
   const walked = [];
   for await (const item of walk(src)) if (!item.isDir) walked.push(item.rel);
   assert(walked.includes('a.txt') && walked.includes(path.join('sub', 'b.txt')), 'walk yields relative paths');
+
+  console.log('\nStop-on-unplug:');
+  const s7 = await backupDrive({
+    source: path.join(tmp, 'vanished'),
+    dest: path.join(tmp, 'dst2'),
+  });
+  assert(s7.removedMidCopy === true || s7.aborted === true, 'missing source aborts instead of erroring per file');
+  assert(s7.errors === 0, 'missing source produces no per-file errors');
 
   await fsp.rm(tmp, { recursive: true, force: true });
 

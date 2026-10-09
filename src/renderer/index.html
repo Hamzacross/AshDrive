@@ -15,13 +15,13 @@
         <div class="brand">
           <img src="../assets/logo.svg" alt="" class="brand-logo" />
           <div class="brand-text">
-            <div class="brand-name">AshDrive</div>
-            <div class="brand-sub">Flash drive backup</div>
+          <div class="brand-name">AshDrive</div>
+            <div class="brand-sub" data-i18n="aboutDescription">Local, incremental backups for removable drives.</div>
           </div>
         </div>
         <div class="topbar-right">
-          <span class="watch" id="watch"><span class="dot"></span><span id="watchText">Watching</span></span>
-          <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+          <span class="watch" id="watch"><span class="dot"></span><span id="watchText" data-i18n="watching">Watching for drives</span></span>
+          <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings" data-i18n-aria="settings">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
         </div>
@@ -31,101 +31,152 @@
 
       <main class="content">
         <div class="content-head">
-          <h2>My drives</h2>
-          <button class="btn primary" id="addBtn">
+          <div>
+            <div class="eyebrow">ASHDRIVE / V2</div>
+            <h2 data-i18n="dashboard">Backup dashboard</h2>
+          </div>
+          <div class="head-actions">
+            <button class="btn ghost" id="refreshDrivesTop" title="Refresh" data-i18n="refresh">Refresh</button>
+            <button class="btn primary" id="addBtn">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            Add drive
-          </button>
+            <span data-i18n="addDrive">Add drive</span>
+            </button>
+          </div>
+        </div>
+
+        <section class="overview" aria-label="Backup overview">
+          <div class="overview-stat"><span class="stat-label" data-i18n="registered">Registered drives</span><strong id="statRegistered">0</strong></div>
+          <div class="overview-stat"><span class="stat-label" data-i18n="connected">Connected now</span><strong id="statConnected">0</strong></div>
+          <div class="overview-stat"><span class="stat-label" data-i18n="automatic">Auto backup</span><strong id="statAutomatic">0</strong></div>
+          <div class="overview-stat latest"><span class="stat-label" data-i18n="latest">Latest backup</span><strong id="statLatest">—</strong></div>
+        </section>
+
+        <div class="drive-toolbar">
+          <label class="search-box" aria-label="Search drives" data-i18n-aria="search">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <input id="searchDrives" type="search" placeholder="Find a drive…" data-i18n-placeholder="search" />
+          </label>
+          <select id="driveFilter" class="select filter-select" aria-label="Filter drives" data-i18n-aria="filterDrives">
+            <option value="all" data-i18n="allDrives">All drives</option>
+            <option value="connected" data-i18n="connectedFilter">Connected</option>
+            <option value="away" data-i18n="awayFilter">Not connected</option>
+            <option value="automatic" data-i18n="automaticFilter">Automatic</option>
+            <option value="ask" data-i18n="askFilter">Ask before backup</option>
+          </select>
+          <span id="driveCount" class="drive-count">0 drives</span>
         </div>
 
         <div class="cards" id="cards"></div>
+        <div class="no-results" id="noResults" data-i18n="noResults" hidden>No drives match this search.</div>
 
         <div class="empty" id="empty" hidden>
           <div class="empty-ill">
             <svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="26" width="28" height="30" rx="4"/><path d="M26 26V14h12v12"/><path d="M30 14V8h4v6"/><path d="M40 48a8 8 0 1 1 0-8"/></svg>
           </div>
-          <div class="empty-title">No drives yet</div>
-          <div class="empty-sub">Plug in a flash drive, then click <strong>Add drive</strong> to start backing it up.</div>
+          <div class="empty-title" data-i18n="noDrives">No drives yet</div>
+          <div class="empty-sub" data-i18n="noDrivesHint">Plug in a flash drive, then click Add drive to start backing it up.</div>
         </div>
+
+        <section class="activity-section" aria-labelledby="activityTitle">
+          <div class="section-heading">
+          <div><div class="eyebrow" data-i18n="backupLog">BACKUP LOG</div><h2 id="activityTitle" data-i18n="recentActivity">Recent activity</h2></div>
+            <span class="hint-inline" data-i18n="latestEvents">Latest 6 events</span>
+          </div>
+          <div class="activity-list" id="activityList"></div>
+        </section>
       </main>
 
       <footer class="footer">
-        <span id="footerText">AshDrive watches for your flash drives and backs them up automatically.</span>
+        <span id="footerText" data-i18n="privacyFooter">Local backups · your files stay on your devices</span>
       </footer>
     </div>
 
     <!-- Add drive modal -->
     <div class="modal-overlay" id="addModal" hidden>
-      <div class="modal">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addTitle">
         <div class="modal-head">
-          <h3>Add a drive</h3>
-          <button class="icon-btn" data-close-modal aria-label="Close">
+            <h3 id="addTitle" data-i18n="addTitle">Add a drive</h3>
+          <button class="icon-btn" data-close-modal aria-label="Close" data-i18n-aria="close">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
         <div class="modal-body">
           <label class="field">
-            <span>Detected drive</span>
+            <span data-i18n="detectedDrive">Detected drive</span>
             <div class="row">
               <select id="driveSelect" class="select"></select>
-              <button class="btn ghost" id="refreshDrives" title="Refresh">Refresh</button>
+              <button class="btn ghost" id="refreshDrives" title="Refresh" data-i18n="refresh">Refresh</button>
             </div>
-            <small id="driveMeta" class="hint">No removable drive detected. Plug one in and click Refresh.</small>
+            <small id="driveMeta" class="hint" data-i18n="noDriveDetected">No removable drive detected. Plug one in and click Refresh.</small>
           </label>
 
           <label class="field">
-            <span>Name</span>
-            <input type="text" id="driveName" class="input" placeholder="e.g. My Photos" />
+            <span data-i18n="name">Name</span>
+            <input type="text" id="driveName" class="input" placeholder="e.g. My Photos" data-i18n-placeholder="namePlaceholder" />
           </label>
 
           <label class="field">
-            <span>Backup folder</span>
+            <span data-i18n="backupFolder">Backup folder</span>
             <div class="row">
-              <input type="text" id="backupFolder" class="input" placeholder="Where backups are stored" readonly />
-              <button class="btn ghost" id="browseFolder">Browse…</button>
+              <input type="text" id="backupFolder" class="input" placeholder="Where backups are stored" data-i18n-placeholder="backupFolderPlaceholder" readonly />
+              <button class="btn ghost" id="browseFolder" data-i18n="browse">Browse…</button>
             </div>
           </label>
 
           <label class="toggle-row">
             <div>
-              <div class="toggle-title">Back up automatically</div>
-              <div class="toggle-sub">Copy this drive every time it's inserted (you still get a notification).</div>
+              <div class="toggle-title" data-i18n="autoTitle">Back up automatically</div>
+              <div class="toggle-sub" data-i18n="autoHint">Copy this drive as soon as it's plugged in, even when AshDrive is in the tray.</div>
             </div>
-            <button class="switch" id="autoToggle" role="switch" aria-checked="false"><span></span></button>
+            <button class="switch" id="autoToggle" role="switch" aria-label="Back up automatically" data-i18n-aria="autoTitle" aria-checked="true"><span></span></button>
           </label>
         </div>
         <div class="modal-foot">
-          <button class="btn ghost" data-close-modal>Cancel</button>
-          <button class="btn primary" id="saveDrive" disabled>Add</button>
+          <button class="btn ghost" data-close-modal data-i18n="cancel">Cancel</button>
+          <button class="btn primary" id="saveDrive" data-i18n="add" disabled>Add</button>
         </div>
       </div>
     </div>
 
     <!-- Settings modal -->
     <div class="modal-overlay" id="settingsModal" hidden>
-      <div class="modal small">
+      <div class="modal small" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
         <div class="modal-head">
-          <h3>Settings</h3>
-          <button class="icon-btn" data-close-modal aria-label="Close">
+          <h3 id="settingsTitle" data-i18n="settings">Settings</h3>
+          <button class="icon-btn" data-close-modal aria-label="Close" data-i18n-aria="close">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
         <div class="modal-body">
+          <label class="field language-field">
+            <span data-i18n="language">Language</span>
+            <select class="select" id="languageSelect" aria-label="Language" data-i18n-aria="language">
+              <option value="en" data-i18n="english">English</option>
+              <option value="ar" data-i18n="arabic">العربية</option>
+            </select>
+          </label>
           <label class="toggle-row">
             <div>
-              <div class="toggle-title">Start AshDrive when I log in</div>
-              <div class="toggle-sub">Runs in the background so backups start the moment you plug in a drive.</div>
+              <div class="toggle-title" data-i18n="startLogin">Start AshDrive when I log in</div>
+              <div class="toggle-sub" data-i18n="startLoginHint">Runs in the background so backups start the moment you plug in a drive.</div>
             </div>
-            <button class="switch" id="loginToggle" role="switch" aria-checked="false"><span></span></button>
+            <button class="switch" id="loginToggle" role="switch" aria-label="Start AshDrive when I log in" data-i18n-aria="startLogin" aria-checked="false"><span></span></button>
           </label>
         </div>
         <div class="modal-foot">
+          <div class="about-block">
+            <div class="about-title" data-i18n="about">About AshDrive</div>
+            <p data-i18n="aboutDescription">Local, incremental backups for removable drives.</p>
+            <button class="repo-link" id="repoLink" data-i18n="repository">Source code</button>
+            <span class="about-license" data-i18n="license">MIT License</span>
+          </div>
           <span class="hint" id="versionLabel"></span>
-          <button class="btn ghost" data-close-modal>Done</button>
+          <button class="btn ghost" data-close-modal data-i18n="done">Done</button>
         </div>
       </div>
     </div>
 
+    <script src="i18n.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

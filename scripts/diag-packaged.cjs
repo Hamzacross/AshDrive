@@ -3,6 +3,8 @@
 const { _electron } = require('@playwright/test');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
+const fsp = require('node:fs/promises');
 
 const exe = path.join(__dirname, '..', 'dist', 'win-unpacked', 'AshDrive.exe');
 if (!fs.existsSync(exe)) {
@@ -11,7 +13,8 @@ if (!fs.existsSync(exe)) {
 }
 
 (async () => {
-  const app = await _electron.launch({ executablePath: exe });
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ashdrive-packaged-'));
+  const app = await _electron.launch({ executablePath: exe, args: [`--user-data-dir=${profile}`] });
   const win = await app.firstWindow();
   const events = [];
   win.on('console', (msg) => events.push('console.' + msg.type() + ': ' + msg.text()));
@@ -25,6 +28,9 @@ if (!fs.existsSync(exe)) {
     ash: typeof window.ash,
     addModalHidden: document.getElementById('addModal').hidden,
     settingsModalHidden: document.getElementById('settingsModal').hidden,
+    hasOverview: !!document.getElementById('statConnected'),
+    hasSearch: !!document.getElementById('searchDrives'),
+    hasActivity: !!document.getElementById('activityTitle'),
   }));
   console.log('boot:', JSON.stringify(boot));
 
@@ -42,6 +48,7 @@ if (!fs.existsSync(exe)) {
 
   const ok =
     boot.ash === 'object' &&
+    boot.hasOverview && boot.hasSearch && boot.hasActivity &&
     afterAdd.addModalHidden === false &&
     afterSettings.settingsModalHidden === false;
 
@@ -49,5 +56,10 @@ if (!fs.existsSync(exe)) {
   console.log(events.join('\n') || '(no console/page events)');
   console.log(ok ? 'PACKAGED BUILD: PASS' : 'PACKAGED BUILD: FAIL');
   await app.close();
+  const tempRoot = path.resolve(os.tmpdir());
+  const target = path.resolve(profile);
+  if (target.startsWith(`${tempRoot}${path.sep}`) && path.basename(target).startsWith('ashdrive-packaged-')) {
+    await fsp.rm(target, { recursive: true, force: true });
+  }
   process.exit(ok ? 0 : 1);
 })().catch((e) => { console.error('diag error:', e); process.exit(1); });

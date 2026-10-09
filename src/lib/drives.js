@@ -1,14 +1,40 @@
 'use strict';
 
-const { exec } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-function execAsync(cmd, options = {}) {
+function run(command, args, options = {}) {
   return new Promise((resolve) => {
-    exec(cmd, { maxBuffer: 16 * 1024 * 1024, windowsHide: true, ...options }, (err, stdout, stderr) => {
-      resolve({ err, stdout: stdout || '', stderr: stderr || '' });
+    const child = spawn(command, args, { windowsHide: true, ...options });
+    const out = [];
+    const errors = [];
+    let bytes = 0;
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish({ err: new Error(`${command} timed out`), stdout: '', stderr: '' });
+    }, 10000);
+    child.stdout.on('data', (chunk) => {
+      bytes += chunk.length;
+      if (bytes > 16 * 1024 * 1024) {
+        child.kill();
+        finish({ err: new Error(`${command} output exceeded limit`), stdout: '', stderr: '' });
+      } else out.push(chunk);
     });
+    child.stderr.on('data', (chunk) => errors.push(chunk));
+    child.on('error', (err) => finish({ err, stdout: '', stderr: '' }));
+    child.on('close', (code) => finish({
+      err: code === 0 ? null : new Error(`${command} exited with code ${code}`),
+      stdout: Buffer.concat(out).toString('utf8'),
+      stderr: Buffer.concat(errors).toString('utf8'),
+    }));
   });
 }
 
@@ -26,13 +52,11 @@ function humanSize(bytes) {
 
 // ---- Windows: removable logical disks (DriveType=2) ----
 async function listWindows() {
-  const ps =
-    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; " +
-    "$d = Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2' | " +
-    "Select-Object DeviceID,VolumeName,Size,FreeSpace,FileSystem; " +
-    "if ($d) { $d | ConvertTo-Json -Compress }";
-  const { stdout } = await execAsync(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`);
-  const text = stdout.toString().trim();
+  const ps = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $d = Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2' | Select-Object DeviceID,VolumeName,Size,FreeSpace,FileSystem,VolumeSerialNumber; if ($d) { $d | ConvertTo-Json -Compress }";
+  const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+  const { stdout, err } = await run('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded]);
+  if (err) throw err;
+  const text = stdout.trim();
   if (!text) return [];
   let parsed;
   try {
@@ -53,6 +77,7 @@ async function listWindows() {
         free: Number(d.FreeSpace) || 0,
         fs: d.FileSystem || '',
         protocol: 'USB',
+        volumeId: d.VolumeSerialNumber ? `win:${String(d.VolumeSerialNumber).trim().toUpperCase()}` : null,
       };
     });
 }
@@ -60,8 +85,7 @@ async function listWindows() {
 // ---- macOS: removable volumes under /Volumes ----
 async function getMacVolumeInfo(mountpoint) {
   const plist = require('plist');
-  const safe = mountpoint.replace(/"/g, '\\"');
-  const { stdout, err } = await execAsync(`diskutil info -plist "${safe}"`);
+  const { stdout, err } = await run('diskutil', ['info', '-plist', mountpoint]);
   if (err || !stdout) return null;
   let p;
   try {
@@ -90,6 +114,7 @@ async function getMacVolumeInfo(mountpoint) {
     size,
     free,
     fs: p.FilesystemType || p.FilesystemName || '',
+    volumeId: p.VolumeUUID ? `mac:${p.VolumeUUID}` : null,
   };
 }
 
@@ -115,6 +140,7 @@ async function listMac() {
       free: info.free,
       fs: info.fs,
       protocol: info.protocol || 'USB',
+      volumeId: info.volumeId,
     });
   }
   return result;
@@ -154,6 +180,9 @@ async function listLinux() {
         free,
         fs: '',
         protocol: 'USB',
+        volumeId: (() => {
+          try { return `linux:${fs.statSync(mp).dev}`; } catch { return null; }
+        })(),
       });
     }
   }
@@ -161,24 +190,22 @@ async function listLinux() {
 }
 
 async function listRemovableDrives() {
-  try {
-    if (process.platform === 'win32') return await listWindows();
-    if (process.platform === 'darwin') return await listMac();
-    return await listLinux();
-  } catch (e) {
-    return [];
-  }
+  if (process.platform === 'win32') return await listWindows();
+  if (process.platform === 'darwin') return await listMac();
+  return await listLinux();
 }
 
 // ---- identity + display helpers ----
 function makeIdentity(drive) {
   const label = (drive.label || '').trim();
   const size = drive.size || 0;
-  return { label, size, key: `${label}::${size}` };
+  const volumeId = drive.volumeId || null;
+  return { label, size, volumeId, key: volumeId || `${label}::${size}` };
 }
 
 function matchIdentity(drive, identity) {
   if (!identity) return false;
+  if (identity.volumeId && drive.volumeId) return drive.volumeId === identity.volumeId;
   const sameSize = (drive.size || 0) === (identity.size || 0);
   if (!identity.label) return sameSize;
   return (drive.label || '').trim() === identity.label && sameSize;
