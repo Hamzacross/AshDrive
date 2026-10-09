@@ -12,6 +12,7 @@ const {
   displayName,
 } = require('../src/lib/drives');
 const { backupDrive, walk } = require('../src/lib/backup');
+const { diffSnapshots, snapshotKey } = require('../src/lib/drive-snapshot');
 
 let pass = 0;
 let fail = 0;
@@ -26,6 +27,18 @@ function assert(cond, msg) {
 }
 
 async function main() {
+  console.log('Drive scan reconciliation:');
+  const initialDrive = { mountpoint: 'E:\\', label: 'Ash', size: 1000, volumeId: 'win:abc' };
+  assert(diffSnapshots([], [initialDrive], 'win32').added.length === 1, 'first scan reports a connected drive as inserted');
+  const unplugged = diffSnapshots([initialDrive], [], 'win32');
+  assert(unplugged.removed.length === 1, 'scan reports unplugging a known drive');
+  const reinserted = diffSnapshots([], [initialDrive], 'win32');
+  assert(reinserted.added.length === 1, 'scan reports reinsertion after an absent scan');
+  const replacement = { ...initialDrive, volumeId: 'win:def' };
+  const swapped = diffSnapshots([initialDrive], [replacement], 'win32');
+  assert(swapped.added.length === 1 && swapped.removed.length === 1, 'replacement media at the same mountpoint triggers remove and insert');
+  assert(snapshotKey(initialDrive, 'win32') === snapshotKey({ ...initialDrive, mountpoint: 'e:\\' }, 'win32'), 'Windows mountpoint comparison ignores letter case');
+
   console.log('Drive detection:');
   const drives = await listRemovableDrives();
   console.log(`  detected ${drives.length} removable drive(s)`);

@@ -24,6 +24,7 @@ const {
   humanSize,
 } = require('./lib/drives');
 const { backupDrive } = require('./lib/backup');
+const { diffSnapshots } = require('./lib/drive-snapshot');
 
 const isMac = process.platform === 'darwin';
 const isWin = process.platform === 'win32';
@@ -81,6 +82,8 @@ let polling = false;
 const pendingAsk = new Map();
 /** id -> true — backups currently running */
 const activeBackups = new Map();
+const backupRestarts = new Set();
+let driveScanPromise = null;
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const statePath = path.join(app.getPath('userData'), 'state.json');
@@ -345,7 +348,23 @@ async function recordBackupRun(id, summary, detail = {}) {
 }
 
 async function runBackup(cfg, drive) {
-  if (activeBackups.get(cfg.id)) return;
+  const active = activeBackups.get(cfg.id);
+  if (active) {
+    if (active.signal.aborted && !backupRestarts.has(cfg.id)) {
+      backupRestarts.add(cfg.id);
+      (async () => {
+        while (activeBackups.get(cfg.id) === active) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        backupRestarts.delete(cfg.id);
+        const present = findPresentDriveFor(cfg);
+        if (config.drives.includes(cfg) && present && !activeBackups.has(cfg.id)) {
+          await runBackup(cfg, present);
+        }
+      })().catch((error) => console.error('Could not restart backup after reinsertion:', error));
+    }
+    return;
+  }
   pendingAsk.delete(cfg.id);
   const controller = new AbortController();
   activeBackups.set(cfg.id, controller);
@@ -485,33 +504,38 @@ function onDriveRemoved(drive) {
   sendToRenderer('drives:update', knownDrives);
 }
 
+async function scanAndReconcileDrives() {
+  if (driveScanPromise) return driveScanPromise;
+  const scan = (async () => {
+    const drives = await listRemovableDrives();
+    const { added, removed } = diffSnapshots(knownDrives, drives);
+
+    // Update first so any restarted backup uses the freshly detected mountpoint.
+    knownDrives = drives;
+    for (const drive of removed) onDriveRemoved(drive);
+    for (const drive of added) evaluateDrive(drive, { silentUnknown: firstTick });
+
+    firstTick = false;
+    sendToRenderer('drives:update', drives);
+    rebuildTrayMenu();
+    return drives;
+  })();
+  driveScanPromise = scan;
+  try {
+    return await scan;
+  } finally {
+    if (driveScanPromise === scan) driveScanPromise = null;
+  }
+}
+
 async function tick() {
   if (polling) return;
   polling = true;
   try {
-    const drives = await listRemovableDrives();
-    const prevMap = new Map(knownDrives.map((d) => [d.mountpoint, d]));
-    const nextMap = new Map(drives.map((d) => [d.mountpoint, d]));
-
-    for (const d of drives) {
-      if (!prevMap.has(d.mountpoint)) {
-        // newly inserted
-        evaluateDrive(d, { silentUnknown: firstTick });
-      }
-    }
-    for (const d of knownDrives) {
-      if (!nextMap.has(d.mountpoint)) {
-        onDriveRemoved(d);
-      }
-    }
-
-    knownDrives = drives;
-    sendToRenderer('drives:update', drives);
-    rebuildTrayMenu();
+    await scanAndReconcileDrives();
   } catch (e) {
     console.error('poll error:', e);
   } finally {
-    firstTick = false;
     polling = false;
   }
 }
@@ -527,8 +551,7 @@ ipcMain.handle('history:get', async (_e, { driveId, eventId } = {}) => {
 });
 
 ipcMain.handle('drives:list', async () => {
-  knownDrives = await listRemovableDrives();
-  return knownDrives;
+  return scanAndReconcileDrives();
 });
 
 ipcMain.handle('dialog:choose-folder', async () => {

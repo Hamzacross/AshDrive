@@ -326,6 +326,11 @@ let selectedDrive = null;
 
 async function refreshDriveSelect() {
   drives = await api.listDrives();
+  render();
+  refreshDriveSelectFromCurrentList();
+}
+
+function refreshDriveSelectFromCurrentList() {
   driveSelect.innerHTML = '';
   if (drives.length === 0) {
     driveSelect.innerHTML = `<option value="">${esc(tr('noDriveDetected'))}</option>`;
@@ -342,6 +347,37 @@ async function refreshDriveSelect() {
     onDriveSelectChange();
   }
   validateAddForm();
+}
+
+async function refreshDrives(button, { updateSelect = false } = {}) {
+  const watchText = document.getElementById('watchText');
+  button.disabled = true;
+  button.textContent = tr('refreshing');
+  watchText.textContent = tr('refreshing');
+  try {
+    drives = await api.listDrives();
+    if (updateSelect) {
+      refreshDriveSelectFromCurrentList();
+      render();
+    } else {
+      render();
+    }
+    const result = tr('scanFound').replace('{count}', formatBytesCount(drives.length));
+    watchText.textContent = result;
+    clearTimeout(refreshDrives.statusTimer);
+    refreshDrives.statusTimer = setTimeout(() => { watchText.textContent = tr('watching'); }, 2500);
+  } catch {
+    watchText.textContent = tr('scanFailed');
+    clearTimeout(refreshDrives.statusTimer);
+    refreshDrives.statusTimer = setTimeout(() => { watchText.textContent = tr('watching'); }, 3500);
+  } finally {
+    button.disabled = false;
+    button.textContent = tr('refresh');
+  }
+}
+
+function formatBytesCount(count) {
+  return new Intl.NumberFormat(i18n.language === 'ar' ? 'ar' : undefined).format(count);
 }
 
 function onDriveSelectChange() {
@@ -368,15 +404,12 @@ document.getElementById('addBtn').addEventListener('click', async () => {
   await refreshDriveSelect();
 });
 
-document.getElementById('refreshDrives').addEventListener('click', refreshDriveSelect);
-document.getElementById('refreshDrivesTop').addEventListener('click', async () => {
-  try {
-    drives = await api.listDrives();
-    render();
-  } catch {
-    document.getElementById('watchText').textContent = 'Drive scan failed';
-  }
-});
+document.getElementById('refreshDrives').addEventListener('click', (event) =>
+  refreshDrives(event.currentTarget, { updateSelect: true })
+);
+document.getElementById('refreshDrivesTop').addEventListener('click', (event) =>
+  refreshDrives(event.currentTarget)
+);
 searchInput.addEventListener('input', render);
 driveFilter.addEventListener('change', render);
 driveSelect.addEventListener('change', onDriveSelectChange);
