@@ -71,4 +71,4 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "AshDrive $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" dist/* --verify-tag --title "AshDrive $GITHUB_REF_NAME" --generate-notes
